@@ -96,11 +96,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         if let data = quotaManager.quotaData {
-            let weeklyPercent = percentageString(remaining: data.usage.remaining, limit: data.usage.limit)
+            // 状态栏只显示七天额度剩余百分比
+            let sevenDayPercent = percentageString(remaining: data.usage.remaining, limit: data.usage.limit)
 
             // 本周剩余
             let totalItem = NSMenuItem(
-                title: "本周剩余: \(weeklyPercent)",
+                title: "本周剩余: \(sevenDayPercent)",
                 action: nil,
                 keyEquivalent: ""
             )
@@ -130,7 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(NSMenuItem.separator())
 
             // 更新状态栏标题
-            updateStatusBar(weeklyPercent: weeklyPercent)
+            updateStatusBar(weeklyPercent: sevenDayPercent)
         } else {
             updateStatusBar(weeklyPercent: nil)
         }
