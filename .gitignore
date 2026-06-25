@@ -1,0 +1,14 @@
+# Swift Package Manager
+.build/
+
+# Superpowers brainstorming artifacts
+.superpowers/
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.xcuserstate

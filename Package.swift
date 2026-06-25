@@ -1,0 +1,27 @@
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "KimiQuotaBar",
+    platforms: [
+        .macOS(.v13)
+    ],
+    products: [
+        .executable(
+            name: "KimiQuotaBar",
+            targets: ["KimiQuotaBar"]
+        )
+    ],
+    targets: [
+        .executableTarget(
+            name: "KimiQuotaBar",
+            path: ".",
+            exclude: ["Makefile", "README.md", "docs", "assets"],
+            sources: [
+                "KimiQuotaBarApp.swift",
+                "QuotaManager.swift",
+                "LaunchAtLoginManager.swift"
+            ]
+        )
+    ]
+)
