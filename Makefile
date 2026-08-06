@@ -26,6 +26,7 @@ package: build
 		-c "Add :CFBundleShortVersionString string 1.0" \
 		-c "Add :CFBundleIconFile string AppIcon" \
 		-c "Add :LSUIElement bool true" \
+		-c "Add :NSLocalNetworkUsageDescription string 需要访问局域网内的 CookieCloud 服务器以同步 OpenCode Go 登录状态" \
 		.build/KimiQuotaBar.app/Contents/Info.plist >/dev/null
 	@rm -rf .build/AppIcon.iconset
 	@mkdir -p .build/AppIcon.iconset

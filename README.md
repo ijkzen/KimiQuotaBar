@@ -1,14 +1,13 @@
 # KimiQuotaBar
 
-一个 macOS 菜单栏应用，实时显示 Kimi Code API 的剩余额度。
+一个 macOS 菜单栏应用，实时显示 Kimi Code API 和 OpenCode Go 的剩余额度。
 
 ## 功能
 
 - 菜单栏显示 **KIMI** 与七天额度剩余百分比
 - 下拉菜单显示：
-  - 本周剩余百分比
-  - 5 小时滑动窗口剩余百分比
-  - 额度重置时间
+  - Kimi Code：本周剩余百分比、5 小时滑动窗口剩余百分比、额度重置时间
+  - OpenCode Go（可选）：5 小时 / 每周 / 每月剩余百分比、重置时间、Zen 余额
 - 每 5 分钟自动刷新
 - 点击菜单栏图标可手动刷新
 - 开机自启动
@@ -21,6 +20,7 @@
 - macOS 13.0+
 - Swift 5.9+
 - 有效的 Kimi Code API Key
+- （可选）OpenCode Go 订阅 + CookieCloud
 
 ### 配置 API Key
 
@@ -28,6 +28,29 @@
 
 1. 环境变量 `KIMI_API_KEY`
 2. `~/.hermes/.env` 文件中的 `KIMI_API_KEY=your_key_here`
+
+### 配置 OpenCode Go（可选）
+
+OpenCode Go 没有公开的额度查询 API，额度数据内嵌在 dashboard 页面中，访问需要 `opencode.ai` 的 `auth` cookie。应用通过 [CookieCloud](https://github.com/easychen/CookieCloud) 同步获取该 cookie。
+
+1. 在浏览器安装 CookieCloud 插件，连接你的 CookieCloud 服务器并同步 cookie（需已登录 opencode.ai）。
+2. 登录 [opencode.ai](https://opencode.ai)，从 dashboard URL 中获取工作区 ID（形如 `wrk_...`）。
+3. 创建 `~/.config/kimiquotabar/config.json`：
+
+```json
+{
+  "opencode_go": {
+    "workspace_id": "wrk_xxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "cookiecloud": {
+      "host": "https://your-cookiecloud-server",
+      "uuid": "your_uuid",
+      "password": "your_password"
+    }
+  }
+}
+```
+
+未配置该文件时菜单中不会显示 OpenCode Go 区块，不影响 Kimi Code 额度功能。
 
 ### 构建和运行
 

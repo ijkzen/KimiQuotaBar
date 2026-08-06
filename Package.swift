@@ -20,6 +20,7 @@ let package = Package(
             sources: [
                 "KimiQuotaBarApp.swift",
                 "QuotaManager.swift",
+                "OpenCodeGoManager.swift",
                 "LaunchAtLoginManager.swift"
             ]
         )

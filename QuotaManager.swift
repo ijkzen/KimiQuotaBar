@@ -21,7 +21,8 @@ struct MembershipInfo: Codable {
 
 struct UsageInfo: Codable {
     let limit: String
-    let remaining: String
+    // 额度用尽时 API 可能不返回 remaining，按 0 处理
+    let remaining: String?
     let resetTime: String
     let used: String?
 }
