@@ -84,7 +84,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 登录项设置错误
         if let launchAtLoginError = launchAtLoginError {
-            addInfoItem(menu: menu, text: "⚠️ \(launchAtLoginError)")
+            addErrorRow(
+                menu: menu,
+                title: "开机自启动设置失败",
+                label: "设置失败 · 点击查看详情",
+                message: launchAtLoginError
+            )
         }
 
         menu.addItem(NSMenuItem.separator())
@@ -93,7 +98,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         addInfoItem(menu: menu, text: "Kimi Code 额度")
 
         if let error = quotaManager.lastError {
-            addInfoItem(menu: menu, text: "⚠️ \(error)")
+            // 长错误文本不直接撑宽菜单：红点行 + 弹窗展示详情
+            addErrorRow(
+                menu: menu,
+                title: "Kimi Code 额度刷新失败",
+                label: "刷新失败 · 点击查看详情",
+                message: error
+            )
         }
 
         if let data = quotaManager.quotaData {
@@ -131,8 +142,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addInfoItem(menu: menu, text: "OpenCode Go 额度")
 
             if let error = openCodeGoManager.lastError {
-                // 刷新失败时保留旧数据展示，仅追加一行错误提示
-                addInfoItem(menu: menu, text: "⚠️ \(error)")
+                // 刷新失败时保留旧数据展示，仅追加一行红点提示（点击弹窗查看详情）
+                addErrorRow(
+                    menu: menu,
+                    title: "OpenCode Go 额度刷新失败",
+                    label: "刷新失败 · 点击查看详情",
+                    message: error
+                )
             }
             for (label, window) in [
                 ("5h窗口", openCodeGoManager.rollingUsage),
@@ -226,13 +242,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(item)
     }
 
-    /// 添加一行纯文本信息（区块标题、重置时间、余额、错误提示）。
+    /// 添加一行纯文本信息（区块标题、重置时间、余额）。
     /// 使用自定义视图以收窄左右边距（原生 NSMenuItem 缩进是系统固定的）
     private func addInfoItem(menu: NSMenu, text: String, fontSize: CGFloat = MenuRowLayout.fontSize) {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         item.view = MenuInfoView(text: text, fontSize: fontSize)
         item.isEnabled = false
         menu.addItem(item)
+    }
+
+    /// 添加一行「红点 + 短文案」的错误行：固定宽度，长错误文本不会撑宽菜单；
+    /// 点击该行时下拉菜单自动消失，并弹窗展示完整错误详情
+    private func addErrorRow(menu: NSMenu, title: String, label: String, message: String) {
+        let item = NSMenuItem(title: "", action: #selector(errorRowClicked(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = ErrorDetail(title: title, message: message)
+        item.view = ErrorRowView(label: label)
+        menu.addItem(item)
+    }
+
+    @objc private func errorRowClicked(_ sender: NSMenuItem) {
+        guard let detail = sender.representedObject as? ErrorDetail else { return }
+        showErrorAlert(title: detail.title, message: detail.message)
+    }
+
+    /// 弹窗展示错误详情（触发前下拉菜单已通过 cancelTracking 关闭）
+    private func showErrorAlert(title: String, message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "好")
+        alert.runModal()
     }
 
     func updateStatusBar(weeklyPercent: String?) {
@@ -304,8 +346,8 @@ enum MenuRowLayout {
 
 // MARK: - Menu Info View
 
-/// 菜单中的纯文本信息行（区块标题、重置时间、余额、错误提示）。
-/// 宽度随文本自适应（长文本如错误提示会相应撑宽菜单）
+/// 菜单中的纯文本信息行（区块标题、重置时间、余额）。
+/// 宽度随文本自适应（长文本如错误提示会相应撑宽菜单，错误提示已改用 ErrorRowView）
 class MenuInfoView: NSView {
     private let text: String
     private let textAttributes: [NSAttributedString.Key: Any]
@@ -330,6 +372,64 @@ class MenuInfoView: NSView {
         (text as NSString).draw(
             at: NSPoint(x: MenuRowLayout.inset, y: (bounds.height - size.height) / 2),
             withAttributes: textAttributes
+        )
+    }
+}
+
+// MARK: - Error Row View
+
+/// 错误行在弹窗中展示的数据（菜单项 representedObject）
+private struct ErrorDetail {
+    let title: String
+    let message: String
+}
+
+/// 菜单中的「刷新失败」提示行：左侧红点 + 短文案，固定宽度，
+/// 长错误文本不会撑宽菜单。点击该行先关闭下拉菜单（NSMenu.cancelTracking），
+/// 再通过菜单项 action 弹窗展示完整错误详情。
+final class ErrorRowView: NSView {
+    private let label: String
+
+    init(label: String) {
+        self.label = label
+        super.init(frame: NSRect(x: 0, y: 0, width: MenuRowLayout.width, height: MenuRowLayout.height))
+        setAccessibilityElement(true)
+        setAccessibilityLabel("\(label)，点击弹窗查看错误详情")
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let item = enclosingMenuItem else { return }
+        // 先让下拉菜单消失，再触发菜单项 action（弹窗展示错误详情）
+        item.menu?.cancelTracking()
+        _ = item.target?.perform(item.action, with: item)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // 左侧红点
+        let dotRadius: CGFloat = 4
+        let dotCenter = NSPoint(x: MenuRowLayout.inset + dotRadius, y: bounds.midY)
+        let dotRect = NSRect(
+            x: dotCenter.x - dotRadius,
+            y: dotCenter.y - dotRadius,
+            width: dotRadius * 2,
+            height: dotRadius * 2
+        )
+        NSColor.systemRed.setFill()
+        NSBezierPath(ovalIn: dotRect).fill()
+
+        // 右侧文案（比 MenuInfoView 默认色更深，暗示可点击）
+        let labelAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: MenuRowLayout.fontSize),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let labelSize = (label as NSString).size(withAttributes: labelAttrs)
+        (label as NSString).draw(
+            at: NSPoint(x: dotCenter.x + dotRadius + 8, y: (bounds.height - labelSize.height) / 2),
+            withAttributes: labelAttrs
         )
     }
 }

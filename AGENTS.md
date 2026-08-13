@@ -32,7 +32,7 @@ KimiQuotaBar/
 
 | 文件 | 主要职责 |
 |------|----------|
-| `KimiQuotaBarApp.swift` | `App` 入口、`NSApplicationDelegate`、单实例检测、构建 `NSMenu` 菜单栏、绘制状态栏图标 |
+| `KimiQuotaBarApp.swift` | `App` 入口、`NSApplicationDelegate`、单实例检测、构建 `NSMenu` 菜单栏、绘制状态栏图标、错误详情弹窗 |
 | `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从环境变量或 `~/.hermes/.env` 读取 `KIMI_API_KEY` |
 | `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；从 CookieCloud 服务器下载并解密 `opencode.ai` 的 `auth` cookie；抓取 dashboard HTML 并解析 SSR 内嵌的用量与账单数据 |
 | `LaunchAtLoginManager.swift` | 基于 `SMAppService.mainApp` 注册/注销登录项，查询当前登录项状态 |
@@ -42,7 +42,7 @@ KimiQuotaBar/
 - **启动流程**: `KimiQuotaBarApp.init()` 将应用设为 accessory 模式 → `AppDelegate.applicationDidFinishLaunching` 进行单实例检测 → 创建 `NSStatusItem` → 初始化 `QuotaManager` 并首次刷新 → 启动 5 分钟定时器。
 - **数据刷新**: `QuotaManager.refresh()` 发送 `URLRequest` 到 Kimi API，解码 JSON 后通过 `onUpdate` 回调通知 `AppDelegate` 重建菜单。
 - **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「KIMI」+ 剩余额度百分比，生成位图作为 `statusItem.button?.image`。
-- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和「OpenCode Go 额度」（可选）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额、错误）使用 `MenuInfoView`、额度行使用 `QuotaBarView` 自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。
+- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和「OpenCode Go 额度」（可选）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。
 - **API Key 来源**（按优先级）:
   1. 环境变量 `KIMI_API_KEY`
   2. `~/.hermes/.env` 文件中的 `KIMI_API_KEY=...`
