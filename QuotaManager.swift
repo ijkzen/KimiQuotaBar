@@ -39,7 +39,8 @@ struct WindowInfo: Codable {
 
 struct DetailInfo: Codable {
     let limit: String
-    let remaining: String
+    // 与 UsageInfo 一致：额度用尽时 API 可能不返回 remaining，按 0 处理
+    let remaining: String?
     let used: String?
     let resetTime: String?
 }
