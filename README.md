@@ -24,10 +24,12 @@
 
 ### 配置 API Key
 
-应用会自动从以下位置读取 API Key：
+应用会从以下位置读取 API Key（按优先级）：
 
-1. 环境变量 `KIMI_API_KEY`
-2. `~/.hermes/.env` 文件中的 `KIMI_API_KEY=your_key_here`
+1. `~/.config/kimiquotabar/config.json` 中的 `kimi.api_key`
+2. 环境变量 `KIMI_API_KEY`（兜底）
+
+配置文件每次刷新时都会重读，修改后点击菜单中的「立即刷新」即可生效，无需重启应用。
 
 ### 配置 OpenCode Go（可选）
 
@@ -39,6 +41,9 @@ OpenCode Go 没有公开的额度查询 API，额度数据内嵌在 dashboard �
 
 ```json
 {
+  "kimi": {
+    "api_key": "your_kimi_api_key"
+  },
   "opencode_go": {
     "workspace_id": "wrk_xxxxxxxxxxxxxxxxxxxxxxxxxx",
     "cookiecloud": {
@@ -101,16 +106,20 @@ Kimi Code 使用两种额度限制：
 
 ## 故障排除
 
-### 显示 "未找到 KIMI_API_KEY"
+### 显示 "未找到 API Key"
 
-确保已设置 API Key：
+确保已在 `~/.config/kimiquotabar/config.json` 中配置：
+```json
+{
+  "kimi": {
+    "api_key": "your_api_key_here"
+  }
+}
+```
+
+或设置环境变量 `KIMI_API_KEY`（作为兜底）：
 ```bash
 export KIMI_API_KEY="your_api_key_here"
-```
-
-或创建 `~/.hermes/.env` 文件：
-```
-KIMI_API_KEY=your_api_key_here
 ```
 
 ### 显示 "Invalid Authentication"

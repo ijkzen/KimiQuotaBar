@@ -6,10 +6,35 @@ import Foundation
 
 /// 配置文件 ~/.config/kimiquotabar/config.json 的结构
 struct AppConfig: Codable {
+    let kimi: KimiConfig?
     let opencodeGo: OpenCodeGoConfig?
 
     enum CodingKeys: String, CodingKey {
+        case kimi
         case opencodeGo = "opencode_go"
+    }
+
+    /// 配置文件路径
+    static let filePath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".config/kimiquotabar/config.json")
+        .path
+
+    /// 读取并解码配置文件；文件不存在或格式错误时返回 nil。
+    /// 每次调用都重读磁盘，修改配置后无需重启即可生效
+    static func load() -> AppConfig? {
+        guard let data = FileManager.default.contents(atPath: filePath) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AppConfig.self, from: data)
+    }
+}
+
+/// 配置文件中的 kimi 段落（Kimi Code API Key）
+struct KimiConfig: Codable {
+    let apiKey: String?
+
+    enum CodingKeys: String, CodingKey {
+        case apiKey = "api_key"
     }
 }
 
@@ -85,17 +110,7 @@ class OpenCodeGoManager: ObservableObject {
     // MARK: Config
 
     private static func loadConfig() -> OpenCodeGoConfig? {
-        let configPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/kimiquotabar/config.json")
-            .path
-        guard let data = FileManager.default.contents(atPath: configPath) else {
-            return nil
-        }
-        do {
-            return try JSONDecoder().decode(AppConfig.self, from: data).opencodeGo
-        } catch {
-            return nil
-        }
+        AppConfig.load()?.opencodeGo
     }
 
     // MARK: Refresh

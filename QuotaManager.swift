@@ -61,7 +61,7 @@ class QuotaManager: ObservableObject {
 
     func refresh() {
         guard let apiKey = loadAPIKey() else {
-            self.lastError = "未找到 KIMI_API_KEY"
+            self.lastError = "未找到 API Key，请在 ~/.config/kimiquotabar/config.json 中配置 kimi.api_key"
             self.onUpdate?()
             return
         }
@@ -121,31 +121,15 @@ class QuotaManager: ObservableObject {
     }
 
     private func loadAPIKey() -> String? {
-        // 1. 尝试环境变量
-        if let envKey = ProcessInfo.processInfo.environment["KIMI_API_KEY"], !envKey.isEmpty {
-            return envKey
+        // 1. 配置文件 ~/.config/kimiquotabar/config.json 的 kimi.api_key
+        //    load() 每次重读磁盘，修改配置后点击「立即刷新」即可生效，无需重启
+        if let key = AppConfig.load()?.kimi?.apiKey, !key.isEmpty {
+            return key
         }
 
-        // 2. 尝试 ~/.hermes/.env
-        let envPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".hermes/.env")
-            .path
-
-        if FileManager.default.fileExists(atPath: envPath) {
-            if let contents = try? String(contentsOfFile: envPath, encoding: .utf8) {
-                for line in contents.components(separatedBy: .newlines) {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.hasPrefix("KIMI_API_KEY=") {
-                        let key = trimmed.dropFirst("KIMI_API_KEY=".count)
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        // 去除可能的引号
-                        let cleanKey = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                        if !cleanKey.isEmpty {
-                            return cleanKey
-                        }
-                    }
-                }
-            }
+        // 2. 兜底：环境变量
+        if let envKey = ProcessInfo.processInfo.environment["KIMI_API_KEY"], !envKey.isEmpty {
+            return envKey
         }
 
         return nil

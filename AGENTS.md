@@ -33,7 +33,7 @@ KimiQuotaBar/
 | 文件 | 主要职责 |
 |------|----------|
 | `KimiQuotaBarApp.swift` | `App` 入口、`NSApplicationDelegate`、单实例检测、构建 `NSMenu` 菜单栏、绘制状态栏图标、错误详情弹窗 |
-| `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从环境变量或 `~/.hermes/.env` 读取 `KIMI_API_KEY` |
+| `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量兜底） |
 | `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；从 CookieCloud 服务器下载并解密 `opencode.ai` 的 `auth` cookie；抓取 dashboard HTML 并解析 SSR 内嵌的用量与账单数据 |
 | `LaunchAtLoginManager.swift` | 基于 `SMAppService.mainApp` 注册/注销登录项，查询当前登录项状态 |
 
@@ -44,8 +44,8 @@ KimiQuotaBar/
 - **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「KIMI」+ 剩余额度百分比，生成位图作为 `statusItem.button?.image`。
 - **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和「OpenCode Go 额度」（可选）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。
 - **API Key 来源**（按优先级）:
-  1. 环境变量 `KIMI_API_KEY`
-  2. `~/.hermes/.env` 文件中的 `KIMI_API_KEY=...`
+  1. `~/.config/kimiquotabar/config.json` 的 `kimi.api_key`（`AppConfig.load()` 每次刷新重读文件，改配置后无需重启）
+  2. 环境变量 `KIMI_API_KEY`（兜底）
 - **OpenCode Go 额度**: 官方没有 JSON 额度 API，数据内嵌在 dashboard HTML 的 SSR 数据中。`GET https://opencode.ai/workspace/{id}/go` 内含 `rollingUsage`/`weeklyUsage`/`monthlyUsage`（各含 `usagePercent` 与 `resetInSec`）；`GET .../billing` 内含 `balance`/`monthlyLimit`/`monthlyUsage`（金额单位 1 USD = 1e8）。认证依赖 `opencode.ai` 的 HttpOnly `auth` cookie（失效时服务端 302 跳登录页），通过 CookieCloud 同步获取；解密算法为 CryptoJS 兼容格式：passphrase = md5hex(`uuid-password`) 前 16 字符，密文为 base64(`Salted__` + 8字节salt + AES-256-CBC密文)，key/iv 由 OpenSSL EVP_BytesToKey(MD5) 派生。配置位于 `~/.config/kimiquotabar/config.json` 的 `opencode_go` 段落；未配置时菜单不显示该区块。CookieCloud 请求使用独立的 `URLSession` 并清空 `connectionProxyDictionary` 直连（系统代理/SOCKS 对局域网地址转发不稳定，会导致假性 "offline" 错误）。
 
 ## 构建与运行
@@ -106,7 +106,7 @@ make clean
   1. `make clean && make package` 成功生成 `.build/KimiQuotaBar.app`。
   2. `swift build` 无编译错误。
   3. 启动应用后菜单栏出现图标。
-  4. 配置 `KIMI_API_KEY` 后点击「立即刷新」，菜单正确显示额度信息。
+  4. 在 `~/.config/kimiquotabar/config.json` 配置 `kimi.api_key` 后点击「立即刷新」，菜单正确显示额度信息。
   5. 再次 `open .build/KimiQuotaBar.app` 不会启动第二个实例（单实例检测）。
   6. 点击「开机自启动」可正确注册/注销登录项。
 
@@ -118,7 +118,7 @@ make clean
 
 ## 安全与隐私注意事项
 
-- **API Key 管理**: 应用从环境变量或 `~/.hermes/.env` 读取 `KIMI_API_KEY`，**不会**将 Key 写入应用 Bundle 或共享存储。修改后注意提醒用户保护该文件权限。
+- **API Key 管理**: 应用从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量 `KIMI_API_KEY` 兜底），**不会**将 Key 写入应用 Bundle 或共享存储。该配置文件以明文保存 API Key 与 CookieCloud 凭据，注意提醒用户保护该文件权限。
 - **网络请求**: Kimi 额度仅向 `https://api.kimi.com/coding/v1/usages` 发起请求，附带 `Authorization: Bearer <KIMI_API_KEY>`；OpenCode Go 额度向用户配置的 CookieCloud 服务器（`GET /get/{uuid}`）和 `https://opencode.ai/workspace/{id}/go`、`/billing` 发起请求，附带 `Cookie: auth=<auth_cookie>`。
 - **CookieCloud 凭据**: `~/.config/kimiquotabar/config.json` 以明文保存 CookieCloud 的 uuid/password（可解密出所有同步的 cookie），注意提醒用户保护该文件权限。
 - **沙盒与权限**: 当前未启用 App Sandbox，未声明特殊权限；作为菜单栏 accessory 应用运行。
