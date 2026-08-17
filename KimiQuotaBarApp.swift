@@ -111,13 +111,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // 状态栏只显示七天额度剩余百分比
             let sevenDayPercent = percentageString(remaining: data.usage.remaining ?? "0", limit: data.usage.limit)
 
-            // 本周剩余
-            addQuotaBar(
-                menu: menu,
-                label: "本周剩余",
-                percent: remainingPercent(remaining: data.usage.remaining ?? "0", limit: data.usage.limit)
-            )
-
             // 5小时窗口
             let windowLimitInfo = data.limits.first?.detail
             addQuotaBar(
@@ -126,8 +119,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 percent: remainingPercent(remaining: windowLimitInfo?.remaining ?? "0", limit: windowLimitInfo?.limit ?? "0")
             )
 
-            // 重置时间
-            addInfoItem(menu: menu, text: "重置: \(formatResetTime(data.usage.resetTime))", fontSize: MenuRowLayout.smallFontSize)
+            // 本周剩余
+            addQuotaBar(
+                menu: menu,
+                label: "本周剩余",
+                percent: remainingPercent(remaining: data.usage.remaining ?? "0", limit: data.usage.limit)
+            )
+
+            // 重置时间：5小时窗口在前、周窗口在后
+            if let resetTime = windowLimitInfo?.resetTime {
+                addInfoItem(menu: menu, text: "5h重置: \(formatResetTime(resetTime))", fontSize: MenuRowLayout.smallFontSize)
+            }
+            addInfoItem(menu: menu, text: "周重置: \(formatResetTime(data.usage.resetTime))", fontSize: MenuRowLayout.smallFontSize)
 
             // 更新状态栏标题
             updateStatusBar(weeklyPercent: sevenDayPercent)
@@ -159,9 +162,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 addQuotaBar(menu: menu, label: label, percent: window.remainingPercent)
             }
 
-            // 5 小时窗口的重置倒计时最短，最有参考价值
-            if let rolling = openCodeGoManager.rollingUsage {
-                addInfoItem(menu: menu, text: "重置: \(formatDate(rolling.resetDate))", fontSize: MenuRowLayout.smallFontSize)
+            // 重置时间：与额度行一致，5小时 / 周 / 月 依次展示
+            for (label, window) in [
+                ("5h重置", openCodeGoManager.rollingUsage),
+                ("周重置", openCodeGoManager.weeklyUsage),
+                ("月重置", openCodeGoManager.monthlyUsage)
+            ] {
+                guard let window = window else { continue }
+                addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
             }
 
             if let balance = openCodeGoManager.billing?.balanceUSD {
