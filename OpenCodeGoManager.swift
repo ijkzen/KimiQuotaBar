@@ -89,8 +89,11 @@ class OpenCodeGoManager: ObservableObject {
     @Published var billing: OpenCodeGoBilling?
     @Published var lastError: String?
 
-    /// 配置是否已就绪（配置文件存在且包含 opencode_go 段落）
-    private(set) var isConfigured = false
+    /// 是否已配置（配置文件存在且包含 opencode_go 段落）。
+    /// 每次读取都重读磁盘，不缓存，修改配置后点「立即刷新」即可生效，无需重启
+    var isConfigured: Bool {
+        Self.loadConfig() != nil
+    }
 
     var onUpdate: (() -> Void)?
 
@@ -99,13 +102,6 @@ class OpenCodeGoManager: ObservableObject {
 
     private let dashboardBase = "https://opencode.ai"
     private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Gecko/20100101 Firefox/148.0"
-
-    private var config: OpenCodeGoConfig?
-
-    init() {
-        config = Self.loadConfig()
-        isConfigured = config != nil
-    }
 
     // MARK: Config
 
@@ -132,7 +128,8 @@ class OpenCodeGoManager: ObservableObject {
     }
 
     private func attemptRefresh(shouldRetry: Bool) {
-        guard let config = config else {
+        // 每次刷新都重读配置文件（不缓存），修改配置后无需重启即可生效
+        guard let config = Self.loadConfig() else {
             // 未配置时静默跳过，不在菜单中显示该区块
             return
         }
