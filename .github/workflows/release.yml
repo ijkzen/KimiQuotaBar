@@ -31,6 +31,9 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: |
+          # 浅克隆下本地的 tag 可能只剩 lightweight 指针，重新拉取 annotated tag 对象以读取 tag 消息
+          git fetch --depth=1 origin tag ${REF_NAME} || true
+
           # 上一版本 tag：无则回退到最早的提交
           PREVIOUS=$(git describe --tags --abbrev=0 ${REF_NAME}^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
           echo "Previous tag: $PREVIOUS"
