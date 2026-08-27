@@ -16,7 +16,7 @@ let package = Package(
         .executableTarget(
             name: "KimiQuotaBar",
             path: ".",
-            exclude: ["Makefile", "README.md", "AGENTS.md", ".github", "docs", "assets"],
+            exclude: ["Makefile", "README.md", "LICENSE", "CONTRIBUTING.md", "CHANGELOG.md", "AGENTS.md", ".github", "docs", "assets"],
             sources: [
                 "KimiQuotaBarApp.swift",
                 "QuotaManager.swift",

@@ -26,7 +26,10 @@ KimiQuotaBar/
 ├── SettingsWindowController.swift # 设置窗口（SwiftUI 表单，配置读写）
 ├── LaunchAtLoginManager.swift # 开机自启动（SMAppService）封装
 ├── assets/AppIcon.png         # 应用图标源文件
-├── README.md                  # 面向用户的说明文档
+├── README.md                  # 面向用户的说明文档（安装、配置、故障排除）
+├── LICENSE                    # MIT 许可证
+├── CONTRIBUTING.md            # 贡献指南（代码风格、提交规范、发版流程）
+├── CHANGELOG.md               # 版本变更记录
 └── docs/superpowers/          # 历史实现计划与设计文档
 ```
 
