@@ -22,6 +22,7 @@ let package = Package(
                 "QuotaManager.swift",
                 "OpenCodeGoManager.swift",
                 "CommandCodeManager.swift",
+                "SettingsWindowController.swift",
                 "LaunchAtLoginManager.swift"
             ]
         )
