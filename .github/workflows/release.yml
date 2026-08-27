@@ -22,9 +22,17 @@ jobs:
       - name: Build and package .app
         run: make package
 
-      - name: Archive app bundle
+      - name: Create DMG disk image
         run: |
-          cd .build && zip -rq KimiQuotaBar-${{ github.ref_name }}.zip KimiQuotaBar.app
+          # 拖拽安装布局：app + Applications 快捷方式
+          STAGE=.build/dmg-stage
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R .build/KimiQuotaBar.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "KimiQuotaBar" -srcfolder "$STAGE" -ov -format UDZO \
+            .build/KimiQuotaBar-${{ github.ref_name }}.dmg
+          rm -rf "$STAGE"
 
       - name: Generate release notes
         id: notes
@@ -89,6 +97,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: KimiQuotaBar ${{ github.ref_name }}
           body_path: /tmp/release_notes.md
-          files: .build/KimiQuotaBar-${{ github.ref_name }}.zip
+          files: .build/KimiQuotaBar-${{ github.ref_name }}.dmg
           draft: false
           prerelease: false
