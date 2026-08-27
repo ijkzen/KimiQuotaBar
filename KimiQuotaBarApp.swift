@@ -72,6 +72,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         openCodeGoManager.refresh()
         commandCodeManager.refresh()
 
+        // 设置保存后自动刷新
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(configDidSave(_:)),
+            name: .configDidSave,
+            object: nil
+        )
+
         // 每5分钟自动刷新
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -171,6 +179,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(refreshItem)
         menu.addItem(NSMenuItem.separator())
 
+        // 设置（独立窗口，保存后自动刷新额度）
+        let settingsItem = NSMenuItem(
+            title: "设置",
+            action: #selector(settingsClicked),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         // 退出
         let quitItem = NSMenuItem(
             title: "退出",
@@ -181,6 +198,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    @objc func settingsClicked() {
+        // 手动打开设置窗口（accessory 模式下 SwiftUI Settings scene 不可靠）
+        SettingsWindowController.shared.show()
+    }
+
+    /// 设置保存后自动刷新全部额度，菜单与状态栏同步更新
+    @objc private func configDidSave(_ notification: Notification) {
+        quotaManager.refresh()
+        openCodeGoManager.refresh()
+        commandCodeManager.refresh()
     }
 
     @objc func refreshClicked() {
