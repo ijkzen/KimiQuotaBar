@@ -56,7 +56,7 @@ jobs:
           write_group '✨ 新功能' '^(feat|feature|新增|支持|添加|feat\()'
           write_group '🐛 修复' '^(fix|修复|fix\()'
           write_group '♻️ 重构' '^(refactor|重构)'
-          write_group '⚙️ 其他' '^[^|]*(chore|ci|docs|test|perf|build|其他|文档|测试|性能)[^|]*|^(chore|ci|docs|test|perf|build)[:(]'
+          write_group '⚙️ 其他' '^(chore|ci|docs|test|perf|build|其他|文档|测试|性能)(\(|\s|:|：)'
           # 兜底：仍未分类的行
           REMAIN=$(grep -viE '^(feat|fix|refactor|chore|ci|docs|test|perf|build|新增|支持|添加|修复|重构)' "$TMP" || true)
           if [ -n "$REMAIN" ]; then
@@ -67,9 +67,10 @@ jobs:
           rm -f "$TMP"
 
           # 手动补充说明：tag 消息中的 Release Notes 段落（通过 GitHub API 读取 annotated tag，
-          # 避免浅克隆下本地 tag 可能只是 lightweight 指针、注释消息缺失的问题）
-          TAG_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${REF_NAME}" --jq -r '.object.sha' || true)"
-          TAG_MSG="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${TAG_SHA}" --jq -r '.message' || true)"
+          # 避免浅克隆下本地 tag 可能只是 lightweight 指针、注释消息缺失的问题。
+          # 用 python3 提取字段：gh api 的 --jq 需要新版 CLI，runner 版本不定）
+          TAG_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${REF_NAME}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])' || true)"
+          TAG_MSG="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${TAG_SHA}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["message"])' || true)"
           BODY="$(printf '%s' "$TAG_MSG" | awk '/^Release Notes/,0' | sed '1d')"
           if [ -z "$BODY" ]; then
             BODY="$(printf '%s' "$TAG_MSG" | head -1)"
