@@ -22,10 +22,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var quotaManager: QuotaManager!
     var openCodeGoManager: OpenCodeGoManager!
+    var commandCodeManager: CommandCodeManager!
     var timer: Timer?
 
     private let launchManager = LaunchAtLoginManager.shared
     private var launchAtLoginError: String?
+
+    /// 当前显示模式（次要额度区块）：opencode_go（默认）或 command_code
+    private var quotaProvider: String { AppConfig.load()?.quotaProvider ?? "opencode_go" }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 单实例检测：若已有实例运行，激活旧实例并退出
@@ -56,15 +60,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        commandCodeManager = CommandCodeManager()
+        commandCodeManager.onUpdate = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.updateMenu()
+            }
+        }
+
         // 首次加载
         quotaManager.refresh()
         openCodeGoManager.refresh()
+        commandCodeManager.refresh()
 
         // 每5分钟自动刷新
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.quotaManager.refresh()
                 self?.openCodeGoManager.refresh()
+                self?.commandCodeManager.refresh()
             }
         }
     }
@@ -138,43 +151,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             updateStatusBar(weeklyPercent: nil)
         }
 
-        // OpenCode Go 区块（仅在配置了 ~/.config/kimiquotabar/config.json 时显示）
-        if openCodeGoManager.isConfigured {
-            menu.addItem(NSMenuItem.separator())
-
-            addInfoItem(menu: menu, text: "OpenCode Go 额度")
-
-            if let error = openCodeGoManager.lastError {
-                // 刷新失败时保留旧数据展示，仅追加一行红点提示（点击弹窗查看详情）
-                addErrorRow(
-                    menu: menu,
-                    title: "OpenCode Go 额度刷新失败",
-                    label: "刷新失败 · 点击查看详情",
-                    message: error
-                )
-            }
-            for (label, window) in [
-                ("5h窗口", openCodeGoManager.rollingUsage),
-                ("本周剩余", openCodeGoManager.weeklyUsage),
-                ("本月剩余", openCodeGoManager.monthlyUsage)
-            ] {
-                guard let window = window else { continue }
-                addQuotaBar(menu: menu, label: label, percent: window.remainingPercent)
-            }
-
-            // 重置时间：与额度行一致，5小时 / 周 / 月 依次展示
-            for (label, window) in [
-                ("5h重置", openCodeGoManager.rollingUsage),
-                ("周重置", openCodeGoManager.weeklyUsage),
-                ("月重置", openCodeGoManager.monthlyUsage)
-            ] {
-                guard let window = window else { continue }
-                addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
-            }
-
-            if let balance = openCodeGoManager.billing?.balanceUSD {
-                addInfoItem(menu: menu, text: String(format: "Zen 余额: $%.2f", balance), fontSize: MenuRowLayout.smallFontSize)
-            }
+        // 次要额度区块：OpenCode Go 与 Command Code 二选一，由 config.json 的 quota_provider 控制
+        switch quotaProvider {
+        case "command_code":
+            addCommandCodeSection(menu: menu)
+        default:
+            addOpenCodeGoSection(menu: menu)
         }
 
         menu.addItem(NSMenuItem.separator())
@@ -204,6 +186,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func refreshClicked() {
         quotaManager.refresh()
         openCodeGoManager.refresh()
+        commandCodeManager.refresh()
     }
 
     @objc func toggleLaunchAtLogin() {
@@ -229,6 +212,107 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         output.dateFormat = "MM-dd HH:mm"
         output.timeZone = TimeZone.current
         return output.string(from: date)
+    }
+
+    /// OpenCode Go 区块（仅在配置了 ~/.config/kimiquotabar/config.json 时显示）
+    private func addOpenCodeGoSection(menu: NSMenu) {
+        guard openCodeGoManager.isConfigured else { return }
+        menu.addItem(NSMenuItem.separator())
+
+        addInfoItem(menu: menu, text: "OpenCode Go 额度")
+
+        if let error = openCodeGoManager.lastError {
+            // 刷新失败时保留旧数据展示，仅追加一行红点提示（点击弹窗查看详情）
+            addErrorRow(
+                menu: menu,
+                title: "OpenCode Go 额度刷新失败",
+                label: "刷新失败 · 点击查看详情",
+                message: error
+            )
+        }
+        for (label, window) in [
+            ("5h窗口", openCodeGoManager.rollingUsage),
+            ("本周剩余", openCodeGoManager.weeklyUsage),
+            ("本月剩余", openCodeGoManager.monthlyUsage)
+        ] {
+            guard let window = window else { continue }
+            addQuotaBar(menu: menu, label: label, percent: window.remainingPercent)
+        }
+
+        // 重置时间：与额度行一致，5小时 / 周 / 月 依次展示
+        for (label, window) in [
+            ("5h重置", openCodeGoManager.rollingUsage),
+            ("周重置", openCodeGoManager.weeklyUsage),
+            ("月重置", openCodeGoManager.monthlyUsage)
+        ] {
+            guard let window = window else { continue }
+            addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
+        }
+
+        if let balance = openCodeGoManager.billing?.balanceUSD {
+            addInfoItem(menu: menu, text: String(format: "Zen 余额: $%.2f", balance), fontSize: MenuRowLayout.smallFontSize)
+        }
+    }
+
+    /// Command Code 区块（仅在配置了 ~/.config/kimiquotabar/config.json 时显示）
+    private func addCommandCodeSection(menu: NSMenu) {
+        guard commandCodeManager.isConfigured else { return }
+        menu.addItem(NSMenuItem.separator())
+
+        addInfoItem(menu: menu, text: "Command Code 额度")
+
+        if let error = commandCodeManager.lastError {
+            // 刷新失败时保留旧数据展示，仅追加一行红点提示（点击弹窗查看详情）
+            addErrorRow(
+                menu: menu,
+                title: "Command Code 额度刷新失败",
+                label: "刷新失败 · 点击查看详情",
+                message: error
+            )
+        }
+
+        // 三个进度条连续排列：5小时 / 周 / 月度（重置与金额信息统一放在进度条之后）
+        for (label, window) in [
+            ("5h窗口", commandCodeManager.credits?.fiveHour),
+            ("本周剩余", commandCodeManager.credits?.weekly)
+        ] {
+            guard let window = window else { continue }
+            addQuotaBar(menu: menu, label: label, percent: window.remainingPercent)
+        }
+
+        // 月度额度池：额度池 - 本期已消费
+        if let credits = commandCodeManager.credits {
+            let monthlyLimit = credits.monthlyCredits ?? 0
+            let used = commandCodeManager.totalCost ?? 0
+            addQuotaBar(menu: menu, label: "本月剩余", percent: monthlyPercent(used: used, limit: monthlyLimit))
+        }
+
+        // 重置时间：与额度行一致，5小时 / 周 依次展示（resetAt 为毫秒时间戳）
+        for (label, window) in [
+            ("5h重置", commandCodeManager.credits?.fiveHour),
+            ("周重置", commandCodeManager.credits?.weekly)
+        ] {
+            guard let window = window else { continue }
+            addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
+        }
+
+        // 本期已消费金额与月度额度池（金额单位 USD）
+        if let totalCost = commandCodeManager.totalCost {
+            addInfoItem(menu: menu, text: String(format: "本期已用: $%.2f", totalCost), fontSize: MenuRowLayout.smallFontSize)
+        }
+        if let monthly = commandCodeManager.credits?.monthlyCredits {
+            addInfoItem(menu: menu, text: String(format: "月度额度: $%.2f", monthly), fontSize: MenuRowLayout.smallFontSize)
+        }
+
+        // 计费周期结束时间（订阅 API 提供，近似作为「月重置」）
+        if let endDate = commandCodeManager.subscription?.periodEndDate {
+            addInfoItem(menu: menu, text: "月重置: \(formatDate(endDate))", fontSize: MenuRowLayout.smallFontSize)
+        }
+    }
+
+    func monthlyPercent(used: Double, limit: Double) -> Int {
+        guard limit > 0 else { return 0 }
+        return Int(max(0, min(100, (limit - used) / limit * 100)).rounded())
     }
 
     func percentageString(remaining: String, limit: String) -> String {
@@ -364,7 +448,7 @@ class MenuInfoView: NSView {
         self.text = text
         self.textAttributes = [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.disabledControlTextColor
+            .foregroundColor: NSColor.labelColor
         ]
         let size = (text as NSString).size(withAttributes: textAttributes)
         let width = max(MenuRowLayout.width, ceil(size.width) + MenuRowLayout.inset * 2)
@@ -471,11 +555,11 @@ class QuotaBarView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let barColor = percent <= 10 ? NSColor.systemRed : NSColor.systemGreen
 
-        // 左侧标签：比原生菜单项小一号，弱化标签、突出进度条与数字
+        // 左侧标签：比原生菜单项小一号，弱化标签、突出进度条与数字（与信息行同色）
         let labelFont = NSFont.systemFont(ofSize: MenuRowLayout.smallFontSize)
         let labelAttrs: [NSAttributedString.Key: Any] = [
             .font: labelFont,
-            .foregroundColor: NSColor.disabledControlTextColor
+            .foregroundColor: NSColor.labelColor
         ]
         let labelSize = (label as NSString).size(withAttributes: labelAttrs)
         (label as NSString).draw(

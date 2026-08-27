@@ -21,6 +21,7 @@ let package = Package(
                 "KimiQuotaBarApp.swift",
                 "QuotaManager.swift",
                 "OpenCodeGoManager.swift",
+                "CommandCodeManager.swift",
                 "LaunchAtLoginManager.swift"
             ]
         )

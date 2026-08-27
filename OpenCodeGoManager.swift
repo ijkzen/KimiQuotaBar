@@ -8,10 +8,15 @@ import Foundation
 struct AppConfig: Codable {
     let kimi: KimiConfig?
     let opencodeGo: OpenCodeGoConfig?
+    let commandCode: CommandCodeConfig?
+    /// 次要额度区块的显示模式："opencode_go"（默认）或 "command_code"（二选一）
+    let quotaProvider: String?
 
     enum CodingKeys: String, CodingKey {
         case kimi
         case opencodeGo = "opencode_go"
+        case commandCode = "command_code"
+        case quotaProvider = "quota_provider"
     }
 
     /// 配置文件路径
