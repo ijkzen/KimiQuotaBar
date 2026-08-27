@@ -23,6 +23,7 @@ KimiQuotaBar/
 ├── QuotaManager.swift         # Kimi API 请求、数据模型、API Key 读取
 ├── OpenCodeGoManager.swift    # OpenCode Go 额度查询、CookieCloud 解密、配置读取
 ├── CommandCodeManager.swift   # Command Code 额度查询（/alpha/* 私有 API）
+├── SettingsWindowController.swift # 设置窗口（SwiftUI 表单，配置读写）
 ├── LaunchAtLoginManager.swift # 开机自启动（SMAppService）封装
 ├── assets/AppIcon.png         # 应用图标源文件
 ├── README.md                  # 面向用户的说明文档
@@ -37,6 +38,7 @@ KimiQuotaBar/
 | `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量兜底） |
 | `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；从 CookieCloud 服务器下载并解密 `opencode.ai` 的 `auth` cookie；抓取 dashboard HTML 并解析 SSR 内嵌的用量与账单数据 |
 | `CommandCodeManager.swift` | 调用 `api.commandcode.ai/alpha/*` 私有 API（whoami → credits + subscriptions → usage/summary）查询 Command Code 余额与用量；从 `command_code.api_key` 读取 API Key |
+| `SettingsWindowController.swift` | 设置窗口（`SettingsWindowController` 管理 NSWindow + NSHostingView，`SettingsView` 为 SwiftUI 表单）；覆盖 config.json 全部可配置字段，敏感字段默认掩码可切换明文，保存后发 `.configDidSave` 通知自动刷新额度 |
 | `LaunchAtLoginManager.swift` | 基于 `SMAppService.mainApp` 注册/注销登录项，查询当前登录项状态 |
 
 ## 技术栈与运行时架构
@@ -44,7 +46,7 @@ KimiQuotaBar/
 - **启动流程**: `KimiQuotaBarApp.init()` 将应用设为 accessory 模式 → `AppDelegate.applicationDidFinishLaunching` 进行单实例检测 → 创建 `NSStatusItem` → 初始化 `QuotaManager` 并首次刷新 → 启动 5 分钟定时器。
 - **数据刷新**: `QuotaManager.refresh()` 发送 `URLRequest` 到 Kimi API，解码 JSON 后通过 `onUpdate` 回调通知 `AppDelegate` 重建菜单。
 - **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「KIMI」+ 剩余额度百分比，生成位图作为 `statusItem.button?.image`。
-- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和次要额度区块（「OpenCode Go 额度」或「Command Code 额度」，二选一，由 `quota_provider` 控制）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。
+- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和次要额度区块（「OpenCode Go 额度」或「Command Code 额度」，二选一，由 `quota_provider` 控制）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。底部「设置」菜单项（无省略号）打开设置窗口：SwiftUI 表单（`SettingsView`），按当前 `quota_provider` 动态显示对应区块（如选中 Command Code 则不显示 OpenCode Go 字段），字段标签与输入框上下两行，API Key/CookieCloud 密码默认掩码可切换明文；保存后写回 config.json 并自动刷新全部额度（`.configDidSave` 通知）。
 - **API Key 来源**（按优先级）:
   1. `~/.config/kimiquotabar/config.json` 的 `kimi.api_key`（`AppConfig.load()` 每次刷新重读文件，改配置后无需重启）
   2. 环境变量 `KIMI_API_KEY`（兜底）
