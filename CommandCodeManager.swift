@@ -178,10 +178,12 @@ class CommandCodeManager: ObservableObject {
 
     /// 解析 /alpha/billing/credits。
     /// 实测响应（无 success 包装）：
-    ///   {"credits":{"monthlyCredits":69.04,"purchasedCredits":0,"freeCredits":0},
-    ///    "windowLimits":{"fiveHour":{"used":0.96,"cap":14,"resetAt":1787817057032},
-    ///                     "weekly":{"used":0.96,"cap":35,"resetAt":1788403857032}}}
-    /// 注：文档样例中的 "remaining" 字段实测未返回，剩余按 cap - used 计算
+    ///   {"credits":{"monthlyCredits":38.31,"purchasedCredits":0,"freeCredits":0},
+    ///    "windowLimits":{"fiveHour":{"used":0.17,"cap":14,"resetAt":1788037663989},
+    ///                     "weekly":{"used":31.68,"cap":35,"resetAt":1788403857032}}}
+    /// 注意：monthlyCredits 是「本月剩余额度」（非总额），
+    /// 月度总额 = monthlyCredits + usage/summary 的 totalCost（本期已用）。
+    /// windowLimits 无 "remaining" 字段，剩余按 cap - used 计算
     static func parseCredits(_ data: Data) -> CommandCodeCredits? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let credits = json["credits"] as? [String: Any] else { return nil }

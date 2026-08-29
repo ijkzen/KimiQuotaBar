@@ -309,10 +309,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addQuotaBar(menu: menu, label: label, percent: window.remainingPercent)
         }
 
-        // 月度额度池：额度池 - 本期已消费
+        // 月度：monthlyCredits 是本月剩余（非总额），总额 = 剩余 + 本期已用（totalCost）
         if let credits = commandCodeManager.credits {
-            let monthlyLimit = credits.monthlyCredits ?? 0
+            let monthlyRemaining = credits.monthlyCredits ?? 0
             let used = commandCodeManager.totalCost ?? 0
+            let monthlyLimit = monthlyRemaining + used
             addQuotaBar(menu: menu, label: "本月剩余", percent: monthlyPercent(used: used, limit: monthlyLimit))
         }
 
@@ -325,12 +326,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
         }
 
-        // 本期已消费金额与月度额度池（金额单位 USD）
+        // 本期已消费金额与月度总额（金额单位 USD；月度总额 = 剩余 + 本期已用）
         if let totalCost = commandCodeManager.totalCost {
             addInfoItem(menu: menu, text: String(format: "本期已用: $%.2f", totalCost), fontSize: MenuRowLayout.smallFontSize)
         }
-        if let monthly = commandCodeManager.credits?.monthlyCredits {
-            addInfoItem(menu: menu, text: String(format: "月度额度: $%.2f", monthly), fontSize: MenuRowLayout.smallFontSize)
+        if let monthlyRemaining = commandCodeManager.credits?.monthlyCredits {
+            let monthlyLimit = monthlyRemaining + (commandCodeManager.totalCost ?? 0)
+            addInfoItem(menu: menu, text: String(format: "月度总额: $%.2f", monthlyLimit), fontSize: MenuRowLayout.smallFontSize)
         }
 
         // 计费周期结束时间（订阅 API 提供，近似作为「月重置」）
