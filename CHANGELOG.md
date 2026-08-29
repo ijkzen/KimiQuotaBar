@@ -6,8 +6,12 @@
 
 ### 新增
 
-- LICENSE（MIT）、CONTRIBUTING.md、CHANGELOG.md 等开源项目文档
-- README 全面更新：补充 Command Code 配置、quota_provider 切换、设置窗口、隐私说明等
+- OpenCode Go 额度改为官方接口直查（`GET opencode.ai/zen/go/v1/usage`，Bearer workspace API Key），移除 CookieCloud 与 dashboard SSR 解析
+
+### 变更
+
+- OpenCode Go 配置从 `workspace_id` + `cookiecloud` 简化为 `api_key`；设置窗口同步更新
+- 移除「Zen 余额」显示（新接口只返回百分比，无金额）
 
 ## [v0.1.1] - 2026-08-27
 

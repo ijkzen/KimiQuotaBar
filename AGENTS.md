@@ -21,7 +21,7 @@ KimiQuotaBar/
 ├── Makefile                   # 构建、打包、安装脚本
 ├── KimiQuotaBarApp.swift      # 应用入口、AppDelegate、菜单栏 UI
 ├── QuotaManager.swift         # Kimi API 请求、数据模型、API Key 读取
-├── OpenCodeGoManager.swift    # OpenCode Go 额度查询、CookieCloud 解密、配置读取
+├── OpenCodeGoManager.swift    # OpenCode Go 额度查询（Bearer API Key）、配置读取
 ├── CommandCodeManager.swift   # Command Code 额度查询（/alpha/* 私有 API）
 ├── SettingsWindowController.swift # 设置窗口（SwiftUI 表单，配置读写）
 ├── LaunchAtLoginManager.swift # 开机自启动（SMAppService）封装
@@ -39,7 +39,7 @@ KimiQuotaBar/
 |------|----------|
 | `KimiQuotaBarApp.swift` | `App` 入口、`NSApplicationDelegate`、单实例检测、构建 `NSMenu` 菜单栏、绘制状态栏图标、错误详情弹窗 |
 | `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量兜底） |
-| `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；从 CookieCloud 服务器下载并解密 `opencode.ai` 的 `auth` cookie；抓取 dashboard HTML 并解析 SSR 内嵌的用量与账单数据 |
+| `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；调用 `GET https://opencode.ai/zen/go/v1/usage`（`Authorization: Bearer <api_key>`）查询 OpenCode Go 5h/周/月 已用百分比 |
 | `CommandCodeManager.swift` | 调用 `api.commandcode.ai/alpha/*` 私有 API（whoami → credits + subscriptions → usage/summary）查询 Command Code 余额与用量；从 `command_code.api_key` 读取 API Key |
 | `SettingsWindowController.swift` | 设置窗口（`SettingsWindowController` 管理 NSWindow + NSHostingView，`SettingsView` 为 SwiftUI 表单）；覆盖 config.json 全部可配置字段，敏感字段默认掩码可切换明文，保存后发 `.configDidSave` 通知自动刷新额度 |
 | `LaunchAtLoginManager.swift` | 基于 `SMAppService.mainApp` 注册/注销登录项，查询当前登录项状态 |
@@ -49,11 +49,11 @@ KimiQuotaBar/
 - **启动流程**: `KimiQuotaBarApp.init()` 将应用设为 accessory 模式 → `AppDelegate.applicationDidFinishLaunching` 进行单实例检测 → 创建 `NSStatusItem` → 初始化 `QuotaManager` 并首次刷新 → 启动 5 分钟定时器。
 - **数据刷新**: `QuotaManager.refresh()` 发送 `URLRequest` 到 Kimi API，解码 JSON 后通过 `onUpdate` 回调通知 `AppDelegate` 重建菜单。
 - **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「KIMI」+ 剩余额度百分比，生成位图作为 `statusItem.button?.image`。
-- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和次要额度区块（「OpenCode Go 额度」或「Command Code 额度」，二选一，由 `quota_provider` 控制）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。底部「设置」菜单项（无省略号）打开设置窗口：SwiftUI 表单（`SettingsView`），按当前 `quota_provider` 动态显示对应区块（如选中 Command Code 则不显示 OpenCode Go 字段），字段标签与输入框上下两行，API Key/CookieCloud 密码默认掩码可切换明文；保存后写回 config.json 并自动刷新全部额度（`.configDidSave` 通知）。
+- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和次要额度区块（「OpenCode Go 额度」或「Command Code 额度」，二选一，由 `quota_provider` 控制）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。底部「设置」菜单项（无省略号）打开设置窗口：SwiftUI 表单（`SettingsView`），按当前 `quota_provider` 动态显示对应区块（如选中 Command Code 则不显示 OpenCode Go 字段），字段标签与输入框上下两行，API Key 默认掩码可切换明文；保存后写回 config.json 并自动刷新全部额度（`.configDidSave` 通知）。
 - **API Key 来源**（按优先级）:
   1. `~/.config/kimiquotabar/config.json` 的 `kimi.api_key`（`AppConfig.load()` 每次刷新重读文件，改配置后无需重启）
   2. 环境变量 `KIMI_API_KEY`（兜底）
-- **OpenCode Go 额度**: 官方没有 JSON 额度 API，数据内嵌在 dashboard HTML 的 SSR 数据中。`GET https://opencode.ai/workspace/{id}/go` 内含 `rollingUsage`/`weeklyUsage`/`monthlyUsage`（各含 `usagePercent` 与 `resetInSec`）；`GET .../billing` 内含 `balance`/`monthlyLimit`/`monthlyUsage`（金额单位 1 USD = 1e8）。认证依赖 `opencode.ai` 的 HttpOnly `auth` cookie（失效时服务端 302 跳登录页），通过 CookieCloud 同步获取；解密算法为 CryptoJS 兼容格式：passphrase = md5hex(`uuid-password`) 前 16 字符，密文为 base64(`Salted__` + 8字节salt + AES-256-CBC密文)，key/iv 由 OpenSSL EVP_BytesToKey(MD5) 派生。配置位于 `~/.config/kimiquotabar/config.json` 的 `opencode_go` 段落；未配置时菜单不显示该区块。CookieCloud 请求使用独立的 `URLSession` 并清空 `connectionProxyDictionary` 直连（系统代理/SOCKS 对局域网地址转发不稳定，会导致假性 "offline" 错误）。
+- **OpenCode Go 额度**: 官方额度接口（2026-08-29 实测）：`GET https://opencode.ai/zen/go/v1/usage`，`Authorization: Bearer <workspace API key>`。只认 Bearer（推理侧 `/messages` 只认 `x-api-key`，不可互换）。响应：`usage.rolling/weekly/monthly` 各含 `status`（`"ok"`/`"rate-limited"`，限流时上游已把 percent 钉在 100）、`percent`（已用百分比整数）、`resetsAt`（ISO 8601）。注意：`percent=0` 时 `resetsAt` 是「now + 窗口时长」的占位值，不代表真实重置时间。401 = key 无效/头用错；403 = key 有效但未购买 Go。只返回百分比，无金额（无余额显示）。配置位于 `~/.config/kimiquotabar/config.json` 的 `opencode_go.api_key`；未配置时菜单不显示该区块。菜单区块：5h窗口 / 本周剩余 / 本月剩余 进度条 + 对应重置时间。
 - **Command Code 额度**: 官方 Provider API 没有用量端点，使用逆向自 command-code CLI（npm 包 `command-code`）的 `/alpha/*` 私有 API（未文档化，字段可能变动）：`GET api.commandcode.ai/alpha/whoami` 取身份（无组织账号时 `org` 为 `null`，此时省略 `orgId` 参数）→ 并发 `GET /alpha/billing/credits`（`credits.monthlyCredits` 为**本月剩余额度**（非总额，总额 = 剩余 + 本期已用 totalCost）、`windowLimits.fiveHour/weekly` 的 `used`/`cap`/`resetAt`（毫秒时间戳，无 `remaining` 字段，剩余按 cap-used 计算））与 `GET /alpha/billing/subscriptions`（`planId`/`status`/`currentPeriodStart`/`currentPeriodEnd`，ISO 8601 字符串）→ `GET /alpha/usage/summary?since=<currentPeriodStart>` 取本期已消费 `totalCost`（USD）。credits/summary 实测响应无 `success`/`data` 包装，subscriptions 有包装（两种格式均兼容）。认证为 `Authorization: Bearer <key>`。配置位于 `~/.config/kimiquotabar/config.json` 的 `command_code.api_key`；未配置时菜单不显示该区块。菜单区块：5h窗口 / 本周剩余 进度条 + 对应重置时间（`resetAt`）、本月剩余进度条（总额 = 剩余 + 本期已用，剩余 = `monthlyCredits`）、本期已用金额、月度总额、月重置（订阅周期结束）。
 - **显示模式切换**: `~/.config/kimiquotabar/config.json` 的顶层 `quota_provider` 字段决定次要额度区块显示哪个：「`opencode_go`」（默认，缺省值）或「`command_code`」。每次刷新重读配置文件，修改后点「立即刷新」即可切换，无需重启。状态栏图标始终显示 KIMI + Kimi 周额度百分比，不随切换改变。
 
@@ -127,9 +127,8 @@ make clean
 
 ## 安全与隐私注意事项
 
-- **API Key 管理**: 应用从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量 `KIMI_API_KEY` 兜底），**不会**将 Key 写入应用 Bundle 或共享存储。该配置文件以明文保存 API Key 与 CookieCloud 凭据，注意提醒用户保护该文件权限。
-- **网络请求**: Kimi 额度仅向 `https://api.kimi.com/coding/v1/usages` 发起请求，附带 `Authorization: Bearer <KIMI_API_KEY>`；OpenCode Go 额度向用户配置的 CookieCloud 服务器（`GET /get/{uuid}`）和 `https://opencode.ai/workspace/{id}/go`、`/billing` 发起请求，附带 `Cookie: auth=<auth_cookie>`；Command Code 额度向 `https://api.commandcode.ai/alpha/` 下 4 个端点发起请求，附带 `Authorization: Bearer <key>`。
-- **CookieCloud 凭据**: `~/.config/kimiquotabar/config.json` 以明文保存 CookieCloud 的 uuid/password（可解密出所有同步的 cookie），注意提醒用户保护该文件权限。
+- **API Key 管理**: 应用从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量 `KIMI_API_KEY` 兜底），**不会**将 Key 写入应用 Bundle 或共享存储。该配置文件以明文保存 API Key，注意提醒用户保护该文件权限。
+- **网络请求**: Kimi 额度仅向 `https://api.kimi.com/coding/v1/usages` 发起请求，附带 `Authorization: Bearer <KIMI_API_KEY>`；OpenCode Go 额度向 `https://opencode.ai/zen/go/v1/usage` 发起请求，附带 `Authorization: Bearer <api_key>`；Command Code 额度向 `https://api.commandcode.ai/alpha/` 下 4 个端点发起请求，附带 `Authorization: Bearer <key>`。
 - **沙盒与权限**: 当前未启用 App Sandbox，未声明特殊权限；作为菜单栏 accessory 应用运行。
 - **登录项**: 使用系统标准 `SMAppService` API，注册时会触发用户授权弹窗。
 

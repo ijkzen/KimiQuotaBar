@@ -11,7 +11,7 @@
 - 菜单栏图标显示 **KIMI** 与七天额度剩余百分比
 - 下拉菜单显示：
   - **Kimi Code**：本周剩余百分比、5 小时滑动窗口剩余百分比、额度重置时间
-  - **OpenCode Go**（可选）：5 小时 / 每周 / 每月剩余百分比、重置时间、Zen 余额
+  - **OpenCode Go**（可选）：5 小时 / 每周 / 每月剩余百分比、重置时间
   - **Command Code**（可选）：5 小时窗口 / 本周剩余（含重置时间）、本月剩余、本期已用金额、月度额度池、月重置时间
 - 每 5 分钟自动刷新，点击菜单栏图标可手动刷新
 - 刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 失败后 3 秒自动重试一次
@@ -26,7 +26,7 @@
 - macOS 13.0+
 - Swift 5.9+（Xcode 或 Command Line Tools）
 - 有效的 Kimi Code API Key
-- （可选）OpenCode Go 订阅 + CookieCloud，或 Command Code API Key
+- （可选）OpenCode Go workspace API Key，或 Command Code API Key
 
 ### 下载
 
@@ -63,11 +63,7 @@ API Key 也可通过环境变量 `KIMI_API_KEY` 提供（兜底，优先级低�
 
 ### 配置 OpenCode Go（可选）
 
-OpenCode Go 没有公开的额度查询 API，额度数据内嵌在 dashboard 页面的 SSR 数据中，访问需要 `opencode.ai` 的 `auth` cookie（HttpOnly）。应用通过 [CookieCloud](https://github.com/easychen/CookieCloud) 同步获取该 cookie。
-
-1. 在浏览器安装 CookieCloud 插件，连接你的 CookieCloud 服务器并同步 cookie（需已登录 [opencode.ai](https://opencode.ai)）。
-2. 从 opencode.ai 的 dashboard URL 中获取工作区 ID（形如 `wrk_...`）。
-3. 在 `config.json` 中加入 `opencode_go` 段落：
+OpenCode Go 提供官方额度接口 `GET https://opencode.ai/zen/go/v1/usage`，使用 workspace API Key 直查（只认 Bearer 鉴权），返回 5 小时 / 每周 / 每月三个窗口的已用百分比：
 
 ```json
 {
@@ -75,15 +71,12 @@ OpenCode Go 没有公开的额度查询 API，额度数据内嵌在 dashboard �
     "api_key": "your_kimi_api_key"
   },
   "opencode_go": {
-    "workspace_id": "wrk_xxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "cookiecloud": {
-      "host": "https://your-cookiecloud-server",
-      "uuid": "your_uuid",
-      "password": "your_password"
-    }
+    "api_key": "your_opencode_go_api_key"
   }
 }
 ```
+
+在 [opencode.ai](https://opencode.ai) 的控制台创建 workspace API Key 即可。
 
 ### 配置 Command Code（可选）
 
@@ -145,15 +138,14 @@ API 响应结构偶尔会变化。应用已尽量将非必要字段设为可选�
 
 ### OpenCode Go 一直显示失败
 
-- 确认 CookieCloud 服务器可达，且浏览器端已同步最新 cookie
-- 确认 `workspace_id` 正确
-- CookieCloud 请求为直连模式，不经过系统代理；如服务器在局域网内请确认网络互通
+- 确认 `opencode_go.api_key` 正确；401 表示 Key 无效，403 表示该 Key 未购买 OpenCode Go 套餐
+- 确认 Key 是在 [opencode.ai](https://opencode.ai) 控制台创建的 workspace API Key
 
 ## 隐私与安全
 
 - API Key 只保存在你的 `~/.config/kimiquotabar/config.json`（明文）或环境变量中，应用不会将其写入 Bundle 或上传到任何地方。
-- 请保护该配置文件的权限（建议 `chmod 600`），其中包含 CookieCloud 凭据，可解密出同步的所有 cookie。
-- 网络请求只发送给：`api.kimi.com`、你配置的 CookieCloud 服务器、`opencode.ai`、`api.commandcode.ai`。
+- 请保护该配置文件的权限（建议 `chmod 600`）。
+- 网络请求只发送给：`api.kimi.com`、`opencode.ai`、`api.commandcode.ai`。
 
 ## 技术栈
 

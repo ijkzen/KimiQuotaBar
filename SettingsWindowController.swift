@@ -61,11 +61,8 @@ struct SettingsView: View {
     @State private var showKimiKey = false
 
     // OpenCode Go
-    @State private var opencodeWorkspaceID: String
-    @State private var cookiecloudHost: String
-    @State private var cookiecloudUUID: String
-    @State private var cookiecloudPassword: String
-    @State private var showCookiecloudPassword = false
+    @State private var opencodeAPIKey: String
+    @State private var showOpencodeKey = false
 
     // Command Code
     @State private var commandCodeAPIKey: String
@@ -79,10 +76,7 @@ struct SettingsView: View {
     init() {
         let config = AppConfig.load()
         _kimiAPIKey = State(initialValue: config?.kimi?.apiKey ?? "")
-        _opencodeWorkspaceID = State(initialValue: config?.opencodeGo?.workspaceId ?? "")
-        _cookiecloudHost = State(initialValue: config?.opencodeGo?.cookiecloud.host ?? "")
-        _cookiecloudUUID = State(initialValue: config?.opencodeGo?.cookiecloud.uuid ?? "")
-        _cookiecloudPassword = State(initialValue: config?.opencodeGo?.cookiecloud.password ?? "")
+        _opencodeAPIKey = State(initialValue: config?.opencodeGo?.apiKey ?? "")
         _commandCodeAPIKey = State(initialValue: config?.commandCode?.apiKey ?? "")
         _quotaProvider = State(initialValue: config?.quotaProvider ?? "opencode_go")
     }
@@ -105,14 +99,7 @@ struct SettingsView: View {
             // 动态显示：只展示当前 quota_provider 对应的区块，切换后即时联动
             if quotaProvider == "opencode_go" {
                 Section("OpenCode Go") {
-                    stackedField(title: "Workspace ID", text: $opencodeWorkspaceID)
-                    stackedField(title: "CookieCloud Host", text: $cookiecloudHost)
-                    stackedField(title: "CookieCloud UUID", text: $cookiecloudUUID)
-                    stackedField(
-                        title: "CookieCloud 密码",
-                        text: $cookiecloudPassword,
-                        isSecure: $showCookiecloudPassword
-                    )
+                    stackedField(title: "API Key", text: $opencodeAPIKey, isSecure: $showOpencodeKey)
                 }
             } else {
                 Section("Command Code") {
@@ -169,7 +156,7 @@ struct SettingsView: View {
 
     // MARK: 保存
 
-    /// 写回配置文件：仅写入非空字段，opencode_go 整段为空（无 workspace）则省略。
+    /// 写回配置文件：仅写入非空字段，opencode_go 整段为空（无 API Key）则省略。
     /// 其余段落在表单中未涉及的字段保持原样不覆盖。
     private func save() {
         var root: [String: Any] = [:]
@@ -180,15 +167,8 @@ struct SettingsView: View {
 
         root["quota_provider"] = quotaProvider
 
-        if !opencodeWorkspaceID.isEmpty {
-            var cookiecloud: [String: Any] = [:]
-            if !cookiecloudHost.isEmpty { cookiecloud["host"] = cookiecloudHost }
-            if !cookiecloudUUID.isEmpty { cookiecloud["uuid"] = cookiecloudUUID }
-            if !cookiecloudPassword.isEmpty { cookiecloud["password"] = cookiecloudPassword }
-            root["opencode_go"] = [
-                "workspace_id": opencodeWorkspaceID,
-                "cookiecloud": cookiecloud
-            ]
+        if !opencodeAPIKey.isEmpty {
+            root["opencode_go"] = ["api_key": opencodeAPIKey]
         }
 
         if !commandCodeAPIKey.isEmpty {

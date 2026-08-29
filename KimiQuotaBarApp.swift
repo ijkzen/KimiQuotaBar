@@ -274,12 +274,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("周重置", openCodeGoManager.weeklyUsage),
             ("月重置", openCodeGoManager.monthlyUsage)
         ] {
-            guard let window = window else { continue }
-            addInfoItem(menu: menu, text: "\(label): \(formatDate(window.resetDate))", fontSize: MenuRowLayout.smallFontSize)
-        }
-
-        if let balance = openCodeGoManager.billing?.balanceUSD {
-            addInfoItem(menu: menu, text: String(format: "Zen 余额: $%.2f", balance), fontSize: MenuRowLayout.smallFontSize)
+            guard let window = window, let resetDate = window.resetDate else { continue }
+            addInfoItem(menu: menu, text: "\(label): \(formatDate(resetDate))", fontSize: MenuRowLayout.smallFontSize)
         }
     }
 
