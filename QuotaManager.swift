@@ -92,9 +92,7 @@ class QuotaManager: ObservableObject {
                     self?.lastError = nil
                 } catch {
                     // 尝试解析错误信息
-                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let errMsg = json["error"] as? [String: Any],
-                       let message = errMsg["message"] as? String {
+                    if let message = Self.parseErrorMessage(data) {
                         self?.lastError = message
                     } else {
                         let detail = (error as? DecodingError).map { decodingError -> String in
@@ -118,6 +116,30 @@ class QuotaManager: ObservableObject {
             }
         }
         task.resume()
+    }
+
+    /// 解析 API 错误响应，返回可读错误信息（无则返回 nil，交由解码异常分支兜底）。
+    /// 兼容两种格式：
+    ///   旧: {"error": {"message": "..."}}
+    ///   新: {"code": "unauthenticated", "details": [{"debug": {"localizedMessage": {"message": "..."}}}]}
+    static func parseErrorMessage(_ data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+
+        if let errMsg = json["error"] as? [String: Any],
+           let message = errMsg["message"] as? String, !message.isEmpty {
+            return message
+        }
+
+        // 新格式：逐个 details 找 localizedMessage.message，找不到再用顶层 code
+        if let details = json["details"] as? [[String: Any]] {
+            for detail in details {
+                if let message = ((detail["debug"] as? [String: Any])?["localizedMessage"]
+                    as? [String: Any])?["message"] as? String, !message.isEmpty {
+                    return message
+                }
+            }
+        }
+        return json["code"] as? String
     }
 
     private func loadAPIKey() -> String? {
