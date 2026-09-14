@@ -3,7 +3,8 @@ import Foundation
 // MARK: - Data Models
 
 struct QuotaResponse: Codable {
-    let user: UserInfo
+    // 实测 2026-09-14 起接口不再返回 user 对象，仅作兼容保留
+    let user: UserInfo?
     let usage: UsageInfo
     let limits: [LimitInfo]
     let parallel: ParallelInfo?
