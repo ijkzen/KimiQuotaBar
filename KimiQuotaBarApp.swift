@@ -360,12 +360,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let headerFont = NSFont.systemFont(ofSize: 7, weight: .medium)
         let percentFont = NSFont.systemFont(ofSize: 10, weight: .bold)
 
-        // 供应商名可能超宽，逐字截断到状态栏可用宽度
-        var headerText = header
         let headerAttrs: [NSAttributedString.Key: Any] = [
             .font: headerFont,
             .foregroundColor: NSColor.controlTextColor
         ]
+        // 头部文字规则：多单词供应商名取各单词首字母大写组成缩写（如 Kimi For Coding
+        // → KFC、Command Code Github → CCG）；单词名（含中文名）保持逐字截断
+        let words = header.split(separator: " ").filter { !$0.isEmpty }
+        var headerText = words.count > 1
+            ? words.map { $0.prefix(1).uppercased() }.joined()
+            : header
+        // 超宽兜底截断（单词名或过长缩写）
         while headerText.count > 1,
               (headerText as NSString).size(withAttributes: headerAttrs).width > size.width - 2 {
             headerText.removeLast()
