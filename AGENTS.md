@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-KimiQuotaBar 是一个 macOS 菜单栏应用（Menu Bar App），用于实时显示 Kimi Code API 的剩余额度，同时可选支持 OpenCode Go / Command Code 额度显示（二选一，由配置切换）。它以 `LSUIElement`（accessory）模式运行，不在 Dock 中显示图标，只在系统菜单栏显示一个状态图标和下拉菜单。
+KimiQuotaBar 是一个 macOS 菜单栏应用（Menu Bar App），通过自托管的 llm-gateway 对外只读接口（`/v1/providers*`）实时显示 LLM 供应商的用量信息（订阅窗口 / 按量余额），llm-gateway 是**唯一信息源**（历史版本直连 Kimi/OpenCode Go/Command Code 的 manager 已删除）。它以 `LSUIElement`（accessory）模式运行，不在 Dock 中显示图标，只在系统菜单栏显示一个状态图标和下拉菜单。
 
 - **目标平台**: macOS 13.0+
 - **编程语言**: Swift 5.9+
@@ -20,9 +20,7 @@ KimiQuotaBar/
 ├── Package.swift              # Swift Package Manager 配置
 ├── Makefile                   # 构建、打包、安装脚本
 ├── KimiQuotaBarApp.swift      # 应用入口、AppDelegate、菜单栏 UI
-├── QuotaManager.swift         # Kimi API 请求、数据模型、API Key 读取
-├── OpenCodeGoManager.swift    # OpenCode Go 额度查询（Bearer API Key）、配置读取
-├── CommandCodeManager.swift   # Command Code 额度查询（/alpha/* 私有 API）
+├── GatewayManager.swift       # AppConfig 配置模型 + llm-gateway 用量查询（/v1/providers*，Bearer API Key）
 ├── SettingsWindowController.swift # 设置窗口（SwiftUI 表单，配置读写）
 ├── LaunchAtLoginManager.swift # 开机自启动（SMAppService）封装
 ├── assets/AppIcon.png         # 应用图标源文件
@@ -38,24 +36,17 @@ KimiQuotaBar/
 | 文件 | 主要职责 |
 |------|----------|
 | `KimiQuotaBarApp.swift` | `App` 入口、`NSApplicationDelegate`、单实例检测、构建 `NSMenu` 菜单栏、绘制状态栏图标、错误详情弹窗 |
-| `QuotaManager.swift` | 定义 `QuotaResponse` 等数据模型；调用 `https://api.kimi.com/coding/v1/usages`；从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量兜底） |
-| `OpenCodeGoManager.swift` | 读取 `~/.config/kimiquotabar/config.json`；调用 `GET https://opencode.ai/zen/go/v1/usage`（`Authorization: Bearer <api_key>`）查询 OpenCode Go 5h/周/月 已用百分比 |
-| `CommandCodeManager.swift` | 调用 `api.commandcode.ai/alpha/*` 私有 API（whoami → credits + subscriptions → usage/summary）查询 Command Code 余额与用量；从 `command_code.api_key` 读取 API Key |
-| `SettingsWindowController.swift` | 设置窗口（`SettingsWindowController` 管理 NSWindow + NSHostingView，`SettingsView` 为 SwiftUI 表单）；覆盖 config.json 全部可配置字段，敏感字段默认掩码可切换明文，保存后发 `.configDidSave` 通知自动刷新额度 |
+| `GatewayManager.swift` | `AppConfig`（`~/.config/kimiquotabar/config.json`，仅 `gateway` 段）；调用 `GET <网关>/v1/providers`（列表）与 `GET /v1/providers/{id}/usage`（用量，`Authorization: Bearer <api_key>`）；解析统一信封（code/msg/data）与 OpenAI 风格鉴权错误；手动刷新带 `?refresh=1` 绕过网关 10 分钟缓存 |
+| `SettingsWindowController.swift` | 设置窗口（`SettingsWindowController` 管理 NSWindow + NSHostingView，`SettingsView` 为 SwiftUI 表单）：网关地址 / API Key（掩码可切换明文）/ 展示供应商勾选（最多三个，打开时自动加载列表）/ 菜单栏数字（先选供应商，窗口下拉按该供应商实际可用窗口动态填充——选中后拉取其用量，订阅制列出 available 窗口、按量为「主余额」）；固定尺寸 460×560，上部字段固定、中部供应商列表占满横向且仅此处滚动、底部按钮经 Spacer 固定在窗口底部；保存时清除历史信息源字段（kimi/opencode_go/command_code/quota_provider），写回 config.json 并发 `.configDidSave` 通知自动刷新 |
 | `LaunchAtLoginManager.swift` | 基于 `SMAppService.mainApp` 注册/注销登录项，查询当前登录项状态 |
 
 ## 技术栈与运行时架构
 
-- **启动流程**: `KimiQuotaBarApp.init()` 将应用设为 accessory 模式 → `AppDelegate.applicationDidFinishLaunching` 进行单实例检测 → 创建 `NSStatusItem` → 初始化 `QuotaManager` 并首次刷新 → 启动 5 分钟定时器。
-- **数据刷新**: `QuotaManager.refresh()` 发送 `URLRequest` 到 Kimi API，解码 JSON 后通过 `onUpdate` 回调通知 `AppDelegate` 重建菜单。
-- **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「KIMI」+ 剩余额度百分比，生成位图作为 `statusItem.button?.image`。
-- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方为「Kimi Code 额度」和次要额度区块（「OpenCode Go 额度」或「Command Code 额度」，二选一，由 `quota_provider` 控制）两个区块，标题与额度详情之间无分隔线；信息行（标题、重置、余额）使用 `MenuInfoView`、额度行使用 `QuotaBarView`、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，长错误文本不会撑宽菜单；点击该行先关闭下拉菜单，再以 `NSAlert` 弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`，原生 NSMenuItem 约 22pt 缩进无法修改，操作行保持原生）；每个额度以「标签 + 进度条 + 百分比数字」展示，剩余 ≤10% 红色、否则绿色。刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 刷新失败后 3 秒自动重试一次。底部「设置」菜单项（无省略号）打开设置窗口：SwiftUI 表单（`SettingsView`），按当前 `quota_provider` 动态显示对应区块（如选中 Command Code 则不显示 OpenCode Go 字段），字段标签与输入框上下两行，API Key 默认掩码可切换明文；保存后写回 config.json 并自动刷新全部额度（`.configDidSave` 通知）。
-- **API Key 来源**（按优先级）:
-  1. `~/.config/kimiquotabar/config.json` 的 `kimi.api_key`（`AppConfig.load()` 每次刷新重读文件，改配置后无需重启）
-  2. 环境变量 `KIMI_API_KEY`（兜底）
-- **OpenCode Go 额度**: 官方额度接口（2026-08-29 实测）：`GET https://opencode.ai/zen/go/v1/usage`，`Authorization: Bearer <workspace API key>`。只认 Bearer（推理侧 `/messages` 只认 `x-api-key`，不可互换）。响应：`usage.rolling/weekly/monthly` 各含 `status`（`"ok"`/`"rate-limited"`，限流时上游已把 percent 钉在 100）、`percent`（已用百分比整数）、`resetsAt`（ISO 8601）。注意：`percent=0` 时 `resetsAt` 是「now + 窗口时长」的占位值，不代表真实重置时间。401 = key 无效/头用错；403 = key 有效但未购买 Go。只返回百分比，无金额（无余额显示）。配置位于 `~/.config/kimiquotabar/config.json` 的 `opencode_go.api_key`；未配置时菜单不显示该区块。菜单区块：5h窗口 / 本周剩余 / 本月剩余 进度条 + 对应重置时间。
-- **Command Code 额度**: 官方 Provider API 没有用量端点，使用逆向自 command-code CLI（npm 包 `command-code`）的 `/alpha/*` 私有 API（未文档化，字段可能变动）：`GET api.commandcode.ai/alpha/whoami` 取身份（无组织账号时 `org` 为 `null`，此时省略 `orgId` 参数）→ 并发 `GET /alpha/billing/credits`（`credits.monthlyCredits` 为**本月剩余额度**（非总额，总额 = 剩余 + 本期已用 totalCost）、`windowLimits.fiveHour/weekly` 的 `used`/`cap`/`resetAt`（毫秒时间戳，无 `remaining` 字段，剩余按 cap-used 计算））与 `GET /alpha/billing/subscriptions`（`planId`/`status`/`currentPeriodStart`/`currentPeriodEnd`，ISO 8601 字符串）→ `GET /alpha/usage/summary?since=<currentPeriodStart>` 取本期已消费 `totalCost`（USD）。credits/summary 实测响应无 `success`/`data` 包装，subscriptions 有包装（两种格式均兼容）。认证为 `Authorization: Bearer <key>`。配置位于 `~/.config/kimiquotabar/config.json` 的 `command_code.api_key`；未配置时菜单不显示该区块。菜单区块：5h窗口 / 本周剩余 进度条 + 对应重置时间（`resetAt`）、本月剩余进度条（总额 = 剩余 + 本期已用，剩余 = `monthlyCredits`）、本期已用金额、月度总额、月重置（订阅周期结束）。
-- **显示模式切换**: `~/.config/kimiquotabar/config.json` 的顶层 `quota_provider` 字段决定次要额度区块显示哪个：「`opencode_go`」（默认，缺省值）或「`command_code`」。每次刷新重读配置文件，修改后点「立即刷新」即可切换，无需重启。状态栏图标始终显示 KIMI + Kimi 周额度百分比，不随切换改变。
+- **启动流程**: `KimiQuotaBarApp.init()` 将应用设为 accessory 模式 → `AppDelegate.applicationDidFinishLaunching` 进行单实例检测 → 创建 `NSStatusItem` → 初始化 `GatewayManager` 并首次刷新 → 启动 5 分钟定时器。
+- **数据刷新**: `GatewayManager.refresh(force:)` 先取供应商列表解析名称，再并发拉取各已选供应商用量；完成后通过 `onUpdate` 回调通知 `AppDelegate` 重建菜单。防重入（`isRefreshing`）+ 配置快照校验（请求期间配置变更则丢弃结果）。
+- **状态栏显示**: 应用不使用系统字体标题，而是在 `NSImage` 上绘制「供应商名 + 数字」生成位图：数字来源由 `gateway.status_bar` 指定（供应商 + 窗口，或按量供应商的主余额），缺省自动取第一个有可展示订阅窗口的已选供应商的最大窗口（月 > 周 > 日 > 5h）；百分比/金额均只保留一位小数；供应商名超宽时逐字截断；无配置/无数据时显示「--」。
+- **菜单内容**: 顶部为开机自启动开关（原生勾选样式）；下方按已选供应商分区块（最多三个，按 `gateway.provider_ids` 顺序），每区块：标题行「<名称> 用量 · 套餐」（右侧尾随弱化的「更新 HH:mm」，不单独占行）、可选错误行、订阅窗口进度条行（仅 `available` 窗口；窗口 label 仅在同供应商存在多种不同标注时逐行展示，单套餐不重复）+「已用 X / Y 单位 · M月d日 HH:mm 重置」同一行（已用居左、重置右对齐尾随，重置按网关返回时区渲染）或按量余额行（label: 金额 币种）。信息行使用 `MenuInfoView`（支持右侧尾随文本；弱化行 18pt 紧凑行高）、额度行使用 `QuotaBarView`（20pt）、错误行使用 `ErrorRowView`（红点 + 固定宽度短文案，点击弹窗展示完整错误）自定义视图，统一 12pt 左右边距（`MenuRowLayout`）。进度条颜色与网关网页用量卡一致（剩余 >50% 绿、>20% 黄、≤20% 红），百分比支持小数；标签列至少 56pt，长标签（如积分池标注）自适应加宽，进度条与信息行随菜单宽度横向撑满。刷新失败时保留旧数据，仅追加红点错误行。底部「设置」菜单项（无省略号）打开设置窗口。
+- **配置来源**: `~/.config/kimiquotabar/config.json` 的 `gateway` 段（`url` / `api_key` / `provider_ids` / `status_bar`）；`AppConfig.load()` 每次刷新重读文件，改配置后无需重启。保存时合并保留文件中表单未覆盖的字段，并清除历史直连信息源字段。
 
 ## 构建与运行
 
@@ -63,7 +54,7 @@ KimiQuotaBar/
 
 - macOS 13.0+
 - Xcode 或 Swift 5.9+ 工具链
-- 有效的 Kimi Code API Key
+- 可访问的 llm-gateway 实例及其 `lg-` API Key
 
 ### 常用命令
 
@@ -104,8 +95,8 @@ make clean
 - **语言**: 源代码注释、菜单文案、错误提示均以中文为主。
 - **并发**: UI 更新集中在 `@MainActor`；网络回调通过 `DispatchQueue.main.async` 切回主线程。
 - **内存管理**: 网络请求和 `onUpdate` 闭包中使用 `[weak self]` 避免循环引用。
-- **数据模型**: 使用 `Codable` 解析 JSON，字段类型尽量与 API 保持一致（例如额度字段为 `String`）。
-- **错误处理**: API 错误优先解析 JSON 中的 `error.message`；解码失败时给出字段级中文提示。
+- **数据模型**: 使用 `Codable` 解析 JSON，字段类型与网关 API 保持一致（百分比/金额为 `Double`，可选字段可缺省或为 null）。
+- **错误处理**: 网关业务错误优先取信封 `msg`；鉴权错误（401/OpenAI 风格信封）取 `error.message`；网络层错误封装为 `GatewayError`。
 - **菜单组织**: 使用 `NSMenuItem.separator()` 分隔不同功能区域，禁用态菜单项通过 `isEnabled = false` 实现。
 
 ## 测试策略
@@ -115,7 +106,7 @@ make clean
   1. `make clean && make package` 成功生成 `.build/KimiQuotaBar.app`。
   2. `swift build` 无编译错误。
   3. 启动应用后菜单栏出现图标。
-  4. 在 `~/.config/kimiquotabar/config.json` 配置 `kimi.api_key` 后点击「立即刷新」，菜单正确显示额度信息。
+  4. 在设置窗口填写网关地址与 API Key、勾选供应商并保存后，菜单正确显示用量信息。
   5. 再次 `open .build/KimiQuotaBar.app` 不会启动第二个实例（单实例检测）。
   6. 点击「开机自启动」可正确注册/注销登录项。
 
@@ -127,8 +118,8 @@ make clean
 
 ## 安全与隐私注意事项
 
-- **API Key 管理**: 应用从 `~/.config/kimiquotabar/config.json` 的 `kimi.api_key` 读取 API Key（环境变量 `KIMI_API_KEY` 兜底），**不会**将 Key 写入应用 Bundle 或共享存储。该配置文件以明文保存 API Key，注意提醒用户保护该文件权限。
-- **网络请求**: Kimi 额度仅向 `https://api.kimi.com/coding/v1/usages` 发起请求，附带 `Authorization: Bearer <KIMI_API_KEY>`；OpenCode Go 额度向 `https://opencode.ai/zen/go/v1/usage` 发起请求，附带 `Authorization: Bearer <api_key>`；Command Code 额度向 `https://api.commandcode.ai/alpha/` 下 4 个端点发起请求，附带 `Authorization: Bearer <key>`。
+- **API Key 管理**: 应用从 `~/.config/kimiquotabar/config.json` 的 `gateway.api_key` 读取 API Key，**不会**将 Key 写入应用 Bundle 或共享存储。该配置文件以明文保存 API Key，注意提醒用户保护该文件权限。
+- **网络请求**: 仅向配置的 `gateway.url` 下 `/v1/providers` 与 `/v1/providers/{id}/usage` 发起请求，附带 `Authorization: Bearer <api_key>`。
 - **沙盒与权限**: 当前未启用 App Sandbox，未声明特殊权限；作为菜单栏 accessory 应用运行。
 - **登录项**: 使用系统标准 `SMAppService` API，注册时会触发用户授权弹窗。
 
@@ -139,3 +130,4 @@ make clean
 - 菜单栏文案和错误提示保持中文。
 - 涉及 UI 的代码请在 `@MainActor` 上下文中执行，避免运行时崩溃。
 - 打包相关的改动需要同时验证 `make package` 的输出结构。
+- 调试钩子：`KQB_OPEN_SETTINGS=1 swift run`（或直接运行二进制）启动后自动打开设置窗口，供 UI 自动化/截图验证设置页。

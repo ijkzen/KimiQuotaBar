@@ -2,20 +2,20 @@
 
 [![Build](https://github.com/ijkzen/KimiQuotaBar/actions/workflows/build.yml/badge.svg)](https://github.com/ijkzen/KimiQuotaBar/actions/workflows/build.yml)
 
-一个 macOS 菜单栏应用，实时显示 **Kimi Code** 的剩余额度，并可选显示 **OpenCode Go** 或 **Command Code** 的额度（二选一，由配置切换）。
+一个 macOS 菜单栏应用，通过自托管的 [llm-gateway](https://github.com/ijkzen/llm-gateway) 实时显示 LLM 供应商的用量信息（订阅窗口 / 按量余额），展示样式与网关网页的用量卡片一致。
 
 以 `LSUIElement`（accessory）模式运行：不占用 Dock，只在系统菜单栏显示一个状态图标和下拉菜单。
 
 ## 功能
 
-- 菜单栏图标显示 **KIMI** 与七天额度剩余百分比
-- 下拉菜单显示：
-  - **Kimi Code**：本周剩余百分比、5 小时滑动窗口剩余百分比、额度重置时间
-  - **OpenCode Go**（可选）：5 小时 / 每周 / 每月剩余百分比、重置时间
-  - **Command Code**（可选）：5 小时窗口 / 本周剩余（含重置时间）、本月剩余、本期已用金额、月度额度池、月重置时间
-- 每 5 分钟自动刷新，点击菜单栏图标可手动刷新
-- 刷新失败时保留旧数据，仅追加一行红点错误提示；OpenCode Go 失败后 3 秒自动重试一次
-- 设置窗口：图形化编辑配置文件，保存后自动刷新额度
+- 菜单栏图标显示供应商名与剩余百分比/余额（只保留一位小数；默认取第一个有可展示订阅窗口的已选供应商的最大窗口，可在设置中指定供应商 + 窗口/主余额）
+- 下拉菜单按供应商分区块展示（最多三个，可配置）：
+  - **订阅制**：逐窗口进度条（占满菜单剩余宽度；剩余百分比，>50% 绿 / >20% 黄 / ≤20% 红）、已用/总量与窗口重置时间各占一行（重置时间按网关时区渲染）
+  - **按量付费**：逐条余额（label + 金额 + 币种）
+  - 区块标题右侧显示用量更新时间（不单独占行）
+- 每 5 分钟自动刷新（走网关 10 分钟用量缓存），「立即刷新」强制网关回源抓取
+- 刷新失败时保留旧数据，仅追加一行红点错误提示（点击查看详情）
+- 设置窗口：图形化填写网关地址与 API Key，在线加载供应商列表并勾选（最多三个），保存后自动刷新；字段固定、供应商列表单独滚动、底部操作按钮固定
 - 开机自启动（`SMAppService`）
 - 单实例运行
 
@@ -25,8 +25,7 @@
 
 - macOS 13.0+
 - Swift 5.9+（Xcode 或 Command Line Tools）
-- 有效的 Kimi Code API Key
-- （可选）OpenCode Go workspace API Key，或 Command Code API Key
+- 一个可访问的 llm-gateway 实例及其 `lg-` API Key
 
 ### 下载
 
@@ -49,103 +48,54 @@ make install   # 安装到 /Applications（可能需要 sudo）
 
 应用从 `~/.config/kimiquotabar/config.json` 读取配置。**每次刷新都会重读配置文件**，修改后点击菜单中的「立即刷新」即可生效，无需重启应用。
 
-### 最小配置（仅 Kimi Code）
-
 ```json
 {
-  "kimi": {
-    "api_key": "your_kimi_api_key"
+  "gateway": {
+    "url": "https://gateway.ijkzen.cn",
+    "api_key": "lg-your_gateway_api_key",
+    "provider_ids": [1, 2, 3],
+    "status_bar": {
+      "provider_id": 1,
+      "window": "weekly"
+    }
   }
 }
 ```
 
-API Key 也可通过环境变量 `KIMI_API_KEY` 提供（兜底，优先级低于配置文件）。
+- `url`：网关地址（不含尾斜杠）。
+- `api_key`：网关管理后台「API Keys」页生成的 `lg-` 密钥（与 `/v1/chat/completions` 转发同一套）。
+- `provider_ids`：要展示的供应商 ID 列表，最多三个；ID 可在网关管理后台供应商列表查看，或通过 `GET /v1/providers` 查询。
+- `status_bar`（可选）：菜单栏图标显示的数字来源。`provider_id` 指定供应商；`window` 可选 `five_hour`（5 小时）/ `daily`（今日）/ `weekly`（本周）/ `monthly`（本月）/ `balance`（按量供应商的主余额）/ `auto`（自动，缺省值）。不写 `status_bar` 即全自动：取第一个有可用窗口的已选供应商的最大窗口。
 
-### 配置 OpenCode Go（可选）
-
-OpenCode Go 提供官方额度接口 `GET https://opencode.ai/zen/go/v1/usage`，使用 workspace API Key 直查（只认 Bearer 鉴权），返回 5 小时 / 每周 / 每月三个窗口的已用百分比：
-
-```json
-{
-  "kimi": {
-    "api_key": "your_kimi_api_key"
-  },
-  "opencode_go": {
-    "api_key": "your_opencode_go_api_key"
-  }
-}
-```
-
-在 [opencode.ai](https://opencode.ai) 的控制台创建 workspace API Key 即可。
-
-### 配置 Command Code（可选）
-
-Command Code 使用未文档化的 `/alpha/*` 私有 API，需要 Command Code API Key：
-
-```json
-{
-  "kimi": {
-    "api_key": "your_kimi_api_key"
-  },
-  "command_code": {
-    "api_key": "your_command_code_key"
-  }
-}
-```
-
-### 切换次要额度显示
-
-`quota_provider` 顶层字段决定菜单栏中次要额度区块显示哪个提供方：
-
-```json
-{
-  "quota_provider": "opencode_go"   // 或 "command_code"，默认 "opencode_go"
-}
-```
-
-配置了对应的 API Key 但未设置 `quota_provider` 时，默认显示 OpenCode Go。
+推荐在「设置」窗口中完成配置：填写网关地址与 API Key 后点「加载供应商列表」，勾选要展示的供应商（最多三个）并保存。
 
 ## 使用
 
-1. 运行应用后，菜单栏出现 **KIMI** 与剩余百分比图标
-2. 点击图标查看详细额度信息，点击「立即刷新」手动更新
-3. 点击「设置」打开设置窗口，可编辑全部配置字段（API Key 等敏感字段默认掩码，可切换明文）；保存后自动刷新额度
+1. 运行应用后，菜单栏出现供应商名与剩余百分比图标
+2. 点击图标查看各供应商用量详情，点击「立即刷新」强制更新
+3. 点击「设置」打开设置窗口（API Key 默认掩码，可切换明文）；保存后自动刷新
 4. 点击「开机自启动」注册登录项（系统会弹出授权确认）
 5. 点击「退出」关闭应用
 
-## 额度说明
-
-**Kimi Code** 使用两种额度限制：
-
-- **7 天周期额度**：每周可用的总请求次数
-- **5 小时滑动窗口**：每 5 小时内可用的请求次数
-
-状态栏图标始终显示 **7 天周期额度** 的剩余百分比，不随 `quota_provider` 切换改变。
-
 ## 故障排除
 
-### 显示「未找到 API Key」
+### 菜单显示「未配置 llm-gateway」
 
-确保已在 `~/.config/kimiquotabar/config.json` 中配置 `kimi.api_key`，或设置环境变量 `KIMI_API_KEY`。
+在「设置」中填写网关地址与 API Key 并勾选至少一个供应商，或直接在 `~/.config/kimiquotabar/config.json` 中配置 `gateway` 段。
 
-### 显示「Invalid Authentication」
+### 显示「API Key 无效或已过期」
 
-Kimi API Key 已过期或无效，请检查并更新。
+网关返回 401：检查 `gateway.api_key` 是否为网关管理后台中已启用的 `lg-` 密钥。
 
-### 显示「解析失败」
+### 显示「解析失败」/「服务端错误」
 
-API 响应结构偶尔会变化。应用已尽量将非必要字段设为可选，若仍出现解析错误，请点击「立即刷新」或重启应用。点击红点错误行可查看完整错误详情。
-
-### OpenCode Go 一直显示失败
-
-- 确认 `opencode_go.api_key` 正确；401 表示 Key 无效，403 表示该 Key 未购买 OpenCode Go 套餐
-- 确认 Key 是在 [opencode.ai](https://opencode.ai) 控制台创建的 workspace API Key
+点击菜单中的红点错误行可查看完整错误详情；常见原因是网关版本过旧（无 `/v1/providers*` 接口）或网络不可达，请升级网关并确认地址可访问。
 
 ## 隐私与安全
 
-- API Key 只保存在你的 `~/.config/kimiquotabar/config.json`（明文）或环境变量中，应用不会将其写入 Bundle 或上传到任何地方。
+- API Key 只保存在你的 `~/.config/kimiquotabar/config.json`（明文），应用不会将其写入 Bundle 或上传到任何地方。
 - 请保护该配置文件的权限（建议 `chmod 600`）。
-- 网络请求只发送给：`api.kimi.com`、`opencode.ai`、`api.commandcode.ai`。
+- 网络请求只发送给配置中的网关地址（`/v1/providers` 与 `/v1/providers/{id}/usage`），附带 `Authorization: Bearer <api_key>`。
 
 ## 技术栈
 

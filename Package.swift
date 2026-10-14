@@ -19,9 +19,7 @@ let package = Package(
             exclude: ["Makefile", "README.md", "LICENSE", "CONTRIBUTING.md", "CHANGELOG.md", "AGENTS.md", ".github", "docs", "assets"],
             sources: [
                 "KimiQuotaBarApp.swift",
-                "QuotaManager.swift",
-                "OpenCodeGoManager.swift",
-                "CommandCodeManager.swift",
+                "GatewayManager.swift",
                 "SettingsWindowController.swift",
                 "LaunchAtLoginManager.swift"
             ]
