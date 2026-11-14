@@ -342,7 +342,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 状态栏：优先显示配置指定的供应商 + 窗口（status_bar），数据不可用时回退为
     /// 自动（第一个有可展示订阅窗口的已选供应商的最大窗口：月 > 周 > 日 > 5h）；
-    /// 按量供应商可指定「主余额」。百分比/金额均只保留一位小数。
+    /// 按量供应商可指定「主余额」。百分比/金额均只保留一位小数（100% 除外）。
     /// 头部为供应商名（超宽截断），无配置/无数据时显示「--」。
     private func updateStatusBar() {
         var header = "用量"
@@ -365,11 +365,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .foregroundColor: NSColor.controlTextColor
         ]
         // 头部文字规则：多单词供应商名取各单词首字母大写组成缩写（如 Kimi For Coding
-        // → KFC、Command Code Github → CCG）；单词名（含中文名）保持逐字截断
+        // → KFC、Command Code Github → CCG）；单词名若含两个及以上大写字母（驼峰式，
+        // 如 OpenDesign）则取这些大写字母组成缩写（→ OD）；普通单词名（含中文名）原样保留
         let words = header.split(separator: " ").filter { !$0.isEmpty }
-        var headerText = words.count > 1
-            ? words.map { $0.prefix(1).uppercased() }.joined()
-            : header
+        var headerText: String
+        if words.count > 1 {
+            headerText = words.map { $0.prefix(1).uppercased() }.joined()
+        } else {
+            let capitals = header.filter { $0.isUppercase }
+            headerText = capitals.count >= 2 ? String(capitals) : header
+        }
         // 超宽兜底截断（单词名或过长缩写）
         while headerText.count > 1,
               (headerText as NSString).size(withAttributes: headerAttrs).width > size.width - 2 {
@@ -430,7 +435,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
 
-    /// 从单个供应商用量中取状态栏数字：窗口剩余百分比（一位小数）或主余额金额
+    /// 从单个供应商用量中取状态栏数字：窗口剩余百分比（一位小数，100% 不带小数）或主余额金额
     private func statusBarValue(_ usage: GatewayUsage, window: String) -> String? {
         if window == "balance" {
             let items = usage.balances ?? []
@@ -442,14 +447,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for kind in ["monthly", "weekly", "daily", "five_hour"] {
                 if let window = available.first(where: { $0.window == kind }),
                    let remaining = window.remainingPercent {
-                    return String(format: "%.1f%%", remaining)
+                    return percentText(remaining)
                 }
             }
             return nil
         }
         guard let window = available.first(where: { $0.window == window }),
               let remaining = window.remainingPercent else { return nil }
-        return String(format: "%.1f%%", remaining)
+        return percentText(remaining)
+    }
+
+    /// 状态栏百分比文案：100% 不带小数，其余保留一位小数
+    private func percentText(_ remaining: Double) -> String {
+        let text = String(format: "%.1f", remaining)
+        return text == "100.0" ? "100%" : "\(text)%"
     }
 }
 
